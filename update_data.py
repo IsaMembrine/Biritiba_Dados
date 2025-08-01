@@ -29,23 +29,6 @@ def coletar_links():
         except Exception as e:
             print(f"Erro em {url}: {e}")
     return all_file_links
-def coletar_links_debug():
-    all_file_links = {}
-    for url in urls:
-        try:
-            r = requests.get(url, auth=auth)
-            st.write(f"🔗 URL acessada: {url}")
-            st.write(f"📡 Status HTTP: {r.status_code}")
-            soup = BeautifulSoup(r.text, 'html.parser')
-            node_id = re.search(r'/view/(\d+)$', url).group(1)
-            file_links = [a['href'] for a in soup.find_all('a', href=True) if a['href'].endswith(('.csv', '.zip'))]
-            st.write(f"📁 Links encontrados para node {node_id}: {file_links}")
-            if file_links:
-                all_file_links[node_id] = file_links
-        except Exception as e:
-            st.error(f"⚠️ Erro ao acessar {url}: {e}")
-    return all_file_links
-
 def baixar_arquivos(all_file_links):
     hoje = datetime.now()
     limite_data = hoje.replace(day=1)
