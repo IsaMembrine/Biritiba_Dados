@@ -5,7 +5,7 @@ import zipfile
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Autenticação via variáveis de ambiente
 auth = (
@@ -22,12 +22,14 @@ def coletar_links():
         try:
             r = requests.get(url, auth=auth)
             soup = BeautifulSoup(r.text, 'html.parser')
-            node_id = re.search(r'/view/(\d+)$', url).group(1)
-            file_links = [a['href'] for a in soup.find_all('a', href=True) if a['href'].endswith(('.csv', '.zip'))]
-            if file_links:
-                all_file_links[node_id] = file_links
+            node_id_match = re.search(r'/view/(\d+)$', url)
+            if node_id_match:
+                node_id = node_id_match.group(1)
+                file_links = [a['href'] for a in soup.find_all('a', href=True) if a['href'].endswith(('.csv', '.zip'))]
+                if file_links:
+                    all_file_links[node_id] = file_links
         except Exception as e:
-            print(f"Erro em {url}: {e}")
+            print(f"Erro ao coletar links em {url}: {e}")
     return all_file_links
 
 def baixar_arquivos(all_file_links):
@@ -47,25 +49,31 @@ def baixar_arquivos(all_file_links):
         downloaded_files[node_id] = []
         for link in links:
             filename = link.split('/')[-1]
+            baixar = False
             if 'current' in filename.lower():
                 baixar = True
             else:
-                try:
-                    partes = filename.split('-')
-                    ano = int(partes[-2])
-                    mes = int(partes[-1].split('.')[0])
-                    baixar = (ano, mes) in meses
-                except:
-                    continue
+                partes = filename.split('-')
+                if len(partes) >= 2:
+                    try:
+                        ano = int(partes[-2])
+                        mes = int(partes[-1].split('.')[0])
+                        baixar = (ano, mes) in meses
+                    except:
+                        continue
             if not baixar:
                 continue
+
             full_url = base_url + link
             response = requests.get(full_url, auth=auth)
             if response.status_code == 200:
                 filepath = f"{node_id}_{filename}"
-                with open(filepath, 'wb') as f:
-                    f.write(response.content)
-                downloaded_files[node_id].append(filepath)
+                try:
+                    with open(filepath, 'wb') as f:
+                        f.write(response.content)
+                    downloaded_files[node_id].append(filepath)
+                except Exception as e:
+                    print(f"Erro ao salvar arquivo {filepath}: {e}")
     return downloaded_files
 
 def processar_arquivos(downloaded_files):
@@ -77,8 +85,8 @@ def processar_arquivos(downloaded_files):
                 try:
                     df = pd.read_csv(fp, skiprows=9)
                     dfs_node.append(df)
-                except:
-                    continue
+                except Exception as e:
+                    print(f"Erro ao ler CSV {fp}: {e}")
             elif fp.endswith('.zip'):
                 try:
                     with zipfile.ZipFile(fp, 'r') as zf:
@@ -87,15 +95,24 @@ def processar_arquivos(downloaded_files):
                                 with zf.open(fn) as f:
                                     df = pd.read_csv(io.TextIOWrapper(f, 'utf-8'), skiprows=9)
                                     dfs_node.append(df)
-                except:
-                    continue
+                except Exception as e:
+                    print(f"Erro ao descompactar {fp}: {e}")
         if dfs_node:
             df_concat = pd.concat(dfs_node, ignore_index=True)
             all_dataframes[node_id] = df_concat
     return all_dataframes
 
 def analisar_e_salvar(all_dataframes):
-    first_node = list(all_dataframes.keys())[0]
+    if not all_dataframes:
+        print("Nenhum dado disponível para análise.")
+        return
+
+    try:
+        first_node = list(all_dataframes.keys())[0]
+    except IndexError:
+        print("Erro: all_dataframes está vazio.")
+        return
+
     todos_nos = all_dataframes[first_node].copy()
     for node_id, df in all_dataframes.items():
         if node_id != first_node and 'Date-and-time' in df.columns:
@@ -110,6 +127,10 @@ def analisar_e_salvar(all_dataframes):
     df_cleaned = todos_nos.copy()
     df_cleaned.drop_duplicates(subset=['Date', 'Time_Rounded'], inplace=True)
     p_cols = [c for c in df_cleaned.columns if c.startswith('p-')]
+    if not p_cols:
+        print("Colunas de pressão não encontradas.")
+        return
+
     df_selected = df_cleaned[['Date-and-time', 'Time_Rounded'] + p_cols].copy()
     melted = df_selected.melt(id_vars=['Date-and-time', 'Time_Rounded'], value_vars=p_cols,
                               var_name='Node_p_Column', value_name='Value')
@@ -145,3 +166,4 @@ def calcular_correlacao_mensal(todos_nos):
                     })
     df_corr_real = pd.DataFrame(correlacoes)
     df_corr_real.to_csv("correlacoes_mensais.csv", index=False)
+
