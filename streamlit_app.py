@@ -48,4 +48,4 @@ def display_attendance_dashboard(monthy_df):
     st.header("📊 Presença Mensal dos Dados")
     if not monthy_df.empty:
         node_id = st.selectbox("Selecione um Piezômetro (Presença):",
-                               sorted(monthy_df["Node_ID"].
+                       sorted(monthy_df["Node_ID"].unique()))
