@@ -16,8 +16,19 @@ auth = (
 base_url = 'https://loadsensing.wocs3.com'
 urls = [f'{base_url}/27920/dataserver/node/view/{nid}' for nid in [1006, 1007, 1008, 1010, 1011, 1012]]
 
-def coletar_links():
-   
+def coletar_links():   
+    all_file_links = {}
+    for url in urls:
+        try:
+            r = requests.get(url, auth=auth)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            node_id = re.search(r'/view/(\d+)$', url).group(1)
+            file_links = [a['href'] for a in soup.find_all('a', href=True) if a['href'].endswith(('.csv', '.zip'))]
+            if file_links:
+                all_file_links[node_id] = file_links
+        except Exception as e:
+            print(f"Erro em {url}: {e}")
+    return all_file_links
 def coletar_links_debug():
     all_file_links = {}
     for url in urls:
@@ -33,19 +44,6 @@ def coletar_links_debug():
                 all_file_links[node_id] = file_links
         except Exception as e:
             st.error(f"⚠️ Erro ao acessar {url}: {e}")
-    return all_file_links
-
-    all_file_links = {}
-    for url in urls:
-        try:
-            r = requests.get(url, auth=auth)
-            soup = BeautifulSoup(r.text, 'html.parser')
-            node_id = re.search(r'/view/(\d+)$', url).group(1)
-            file_links = [a['href'] for a in soup.find_all('a', href=True) if a['href'].endswith(('.csv', '.zip'))]
-            if file_links:
-                all_file_links[node_id] = file_links
-        except Exception as e:
-            print(f"Erro em {url}: {e}")
     return all_file_links
 
 def baixar_arquivos(all_file_links):
