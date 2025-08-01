@@ -7,7 +7,7 @@ import pandas as pd
 from bs4 import BeautifulSoup
 from datetime import datetime
 
-# Autenticação via variáveis de ambiente
+# Autenticação via secrets ou env
 auth = (
     os.getenv("GATEWAY_USERNAME"),
     os.getenv("GATEWAY_PASSWORD")
@@ -22,14 +22,12 @@ def coletar_links():
         try:
             r = requests.get(url, auth=auth)
             soup = BeautifulSoup(r.text, 'html.parser')
-            node_id_match = re.search(r'/view/(\d+)$', url)
-            if node_id_match:
-                node_id = node_id_match.group(1)
-                file_links = [a['href'] for a in soup.find_all('a', href=True) if a['href'].endswith(('.csv', '.zip'))]
-                if file_links:
-                    all_file_links[node_id] = file_links
+            node_id = re.search(r'/view/(\d+)$', url).group(1)
+            file_links = [a['href'] for a in soup.find_all('a', href=True) if a['href'].endswith(('.csv', '.zip'))]
+            if file_links:
+                all_file_links[node_id] = file_links
         except Exception as e:
-            print(f"Erro ao coletar links em {url}: {e}")
+            print(f"Erro em {url}: {e}")
     return all_file_links
 
 def baixar_arquivos(all_file_links):
@@ -49,31 +47,25 @@ def baixar_arquivos(all_file_links):
         downloaded_files[node_id] = []
         for link in links:
             filename = link.split('/')[-1]
-            baixar = False
             if 'current' in filename.lower():
                 baixar = True
             else:
-                partes = filename.split('-')
-                if len(partes) >= 2:
-                    try:
-                        ano = int(partes[-2])
-                        mes = int(partes[-1].split('.')[0])
-                        baixar = (ano, mes) in meses
-                    except:
-                        continue
+                try:
+                    partes = filename.split('-')
+                    ano = int(partes[-2])
+                    mes = int(partes[-1].split('.')[0])
+                    baixar = (ano, mes) in meses
+                except:
+                    continue
             if not baixar:
                 continue
-
             full_url = base_url + link
             response = requests.get(full_url, auth=auth)
             if response.status_code == 200:
                 filepath = f"{node_id}_{filename}"
-                try:
-                    with open(filepath, 'wb') as f:
-                        f.write(response.content)
-                    downloaded_files[node_id].append(filepath)
-                except Exception as e:
-                    print(f"Erro ao salvar arquivo {filepath}: {e}")
+                with open(filepath, 'wb') as f:
+                    f.write(response.content)
+                downloaded_files[node_id].append(filepath)
     return downloaded_files
 
 def processar_arquivos(downloaded_files):
@@ -85,8 +77,8 @@ def processar_arquivos(downloaded_files):
                 try:
                     df = pd.read_csv(fp, skiprows=9)
                     dfs_node.append(df)
-                except Exception as e:
-                    print(f"Erro ao ler CSV {fp}: {e}")
+                except:
+                    continue
             elif fp.endswith('.zip'):
                 try:
                     with zipfile.ZipFile(fp, 'r') as zf:
@@ -95,57 +87,12 @@ def processar_arquivos(downloaded_files):
                                 with zf.open(fn) as f:
                                     df = pd.read_csv(io.TextIOWrapper(f, 'utf-8'), skiprows=9)
                                     dfs_node.append(df)
-                except Exception as e:
-                    print(f"Erro ao descompactar {fp}: {e}")
+                except:
+                    continue
         if dfs_node:
             df_concat = pd.concat(dfs_node, ignore_index=True)
             all_dataframes[node_id] = df_concat
     return all_dataframes
-
-def analisar_e_salvar(all_dataframes):
-    if not all_dataframes:
-        print("Nenhum dado disponível para análise.")
-        return
-
-    try:
-        first_node = list(all_dataframes.keys())[0]
-    except IndexError:
-        print("Erro: all_dataframes está vazio.")
-        return
-
-    todos_nos = all_dataframes[first_node].copy()
-    for node_id, df in all_dataframes.items():
-        if node_id != first_node and 'Date-and-time' in df.columns:
-            todos_nos = pd.merge(todos_nos, df, on='Date-and-time', how='outer', suffixes=('', f'_{node_id}'))
-
-    todos_nos['Date-and-time'] = pd.to_datetime(todos_nos['Date-and-time'], errors='coerce')
-    todos_nos.dropna(subset=['Date-and-time'], inplace=True)
-    todos_nos['Date'] = todos_nos['Date-and-time'].dt.date
-    todos_nos['Time_Rounded'] = todos_nos['Date-and-time'].dt.round('h').dt.time
-    todos_nos['Month'] = todos_nos['Date-and-time'].dt.to_period('M')
-
-    df_cleaned = todos_nos.copy()
-    df_cleaned.drop_duplicates(subset=['Date', 'Time_Rounded'], inplace=True)
-    p_cols = [c for c in df_cleaned.columns if c.startswith('p-')]
-    if not p_cols:
-        print("Colunas de pressão não encontradas.")
-        return
-
-    df_selected = df_cleaned[['Date-and-time', 'Time_Rounded'] + p_cols].copy()
-    melted = df_selected.melt(id_vars=['Date-and-time', 'Time_Rounded'], value_vars=p_cols,
-                              var_name='Node_p_Column', value_name='Value')
-    melted.dropna(subset=['Value'], inplace=True)
-    melted['Month'] = melted['Date-and-time'].dt.to_period('M')
-    melted['Node_ID'] = melted['Node_p_Column'].apply(lambda x: x.split('-')[1])
-    counts = melted.groupby(['Month', 'Node_ID']).size().reset_index(name='Monthly_Data_Count')
-    counts['Days_in_Month'] = counts['Month'].dt.days_in_month
-    counts['Max_Data'] = counts['Days_in_Month'] * 24
-    counts['Monthly_Attendance_Percentage'] = (counts['Monthly_Data_Count'] / counts['Max_Data']) * 100
-    monthy_selecionado = counts[['Month', 'Node_ID', 'Monthly_Attendance_Percentage']].copy()
-    monthy_selecionado['Month'] = monthy_selecionado['Month'].astype(str)
-    monthy_selecionado.to_csv("monthy_selecionado.csv", index=False)
-
-    calcular_correlacao_mensal(todos_nos)
 
 def calcular_correlacao_mensal(todos_nos):
     correlacoes = []
@@ -164,6 +111,39 @@ def calcular_correlacao_mensal(todos_nos):
                         'Node_ID': nid,
                         'Correlation': corr
                     })
-    df_corr_real = pd.DataFrame(correlacoes)
-    df_corr_real.to_csv("correlacoes_mensais.csv", index=False)
+    return pd.DataFrame(correlacoes)
+
+def analisar_e_salvar(all_dataframes):
+    first_node = list(all_dataframes.keys())[0]
+    todos_nos = all_dataframes[first_node].copy()
+    for node_id, df in all_dataframes.items():
+        if node_id != first_node and 'Date-and-time' in df.columns:
+            todos_nos = pd.merge(todos_nos, df, on='Date-and-time', how='outer', suffixes=('', f'_{node_id}'))
+
+    todos_nos['Date-and-time'] = pd.to_datetime(todos_nos['Date-and-time'], errors='coerce')
+    todos_nos.dropna(subset=['Date-and-time'], inplace=True)
+    todos_nos['Date'] = todos_nos['Date-and-time'].dt.date
+    todos_nos['Time_Rounded'] = todos_nos['Date-and-time'].dt.round('h').dt.time
+    todos_nos['Month'] = todos_nos['Date-and-time'].dt.to_period('M')
+
+    df_cleaned = todos_nos.copy()
+    df_cleaned.drop_duplicates(subset=['Date', 'Time_Rounded'], inplace=True)
+    p_cols = [c for c in df_cleaned.columns if c.startswith('p-')]
+    df_selected = df_cleaned[['Date-and-time', 'Time_Rounded'] + p_cols].copy()
+    melted = df_selected.melt(id_vars=['Date-and-time', 'Time_Rounded'], value_vars=p_cols,
+                              var_name='Node_p_Column', value_name='Value')
+    melted.dropna(subset=['Value'], inplace=True)
+    melted['Month'] = melted['Date-and-time'].dt.to_period('M')
+    melted['Node_ID'] = melted['Node_p_Column'].apply(lambda x: x.split('-')[1])
+    counts = melted.groupby(['Month', 'Node_ID']).size().reset_index(name='Monthly_Data_Count')
+    counts['Days_in_Month'] = counts['Month'].dt.days_in_month
+    counts['Max_Data'] = counts['Days_in_Month'] * 24
+    counts['Monthly_Attendance_Percentage'] = (counts['Monthly_Data_Count'] / counts['Max_Data']) * 100
+    monthy_selecionado = counts[['Month', 'Node_ID', 'Monthly_Attendance_Percentage']].copy()
+    monthy_selecionado['Month'] = monthy_selecionado['Month'].astype(str)
+
+    df_corr_real = calcular_correlacao_mensal(todos_nos)
+
+    return monthy_selecionado, df_corr_real
+
 
