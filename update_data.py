@@ -28,9 +28,8 @@ def coletar_links():
                 all_file_links[node_id] = file_links
         except Exception as e:
             print(f"Erro em {url}: {e}")
-            file_links = coletar_links()
-st.write("🔍 Links coletados:", file_links)
-    return all_file_links
+      
+        return all_file_links
 def baixar_arquivos(all_file_links):
     hoje = datetime.now()
     limite_data = hoje.replace(day=1)
