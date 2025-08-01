@@ -46,27 +46,20 @@ def update_and_load_data():
 
 def display_attendance_dashboard(monthy_df):
     st.header("📊 Presença Mensal dos Dados")
-    if not monthy_df.empty:
-        node_id = st.selectbox("Selecione um Piezômetro (Presença):",
-                       sorted(monthy_df["Node_ID"].unique()))
-        def display_attendance_dashboard(monthy_df):
-    st.header("📊 Presença Mensal dos Dados")
 
     if monthy_df.empty:
         st.warning("Nenhum dado disponível para exibir.")
         return
 
-    # Seleção do piezômetro
-    node_id = st.selectbox("Selecione um Piezômetro:", sorted(monthy_df["Node_ID"].unique()))
+    node_id = st.selectbox("Selecione um Piezômetro (Presença):",
+                           sorted(monthy_df["Node_ID"].unique()))
 
-    # Filtra os dados para o piezômetro escolhido
     df_filtrado = monthy_df[monthy_df["Node_ID"] == node_id]
 
     if df_filtrado.empty:
         st.error(f"Nenhum dado encontrado para o Node {node_id}.")
         return
 
-    # Cria gráfico de barras interativo com Plotly
     fig = px.bar(
         df_filtrado,
         x="Month_Str",
@@ -81,15 +74,14 @@ def display_attendance_dashboard(monthy_df):
     )
     fig.update_layout(xaxis_title="Mês", yaxis_title="% de Presença", yaxis_range=[0, 100])
 
-    # Exibe gráfico no Streamlit
     st.plotly_chart(fig, use_container_width=True)
 
-    # Adiciona observações
     st.markdown("""
     ✅ **Legenda**: A barra representa o percentual de dados disponíveis por mês para o piezômetro selecionado.
     
     💡 Quanto mais alta a barra, maior a cobertura de dados. Ideal é estar próximo de 100%.
     """)
+
 def display_correlation_dashboard(df_corr):
     st.header("📈 Correlação Mensal: Pressão vs Frequência")
 
@@ -97,17 +89,15 @@ def display_correlation_dashboard(df_corr):
         st.warning("Nenhum dado de correlação disponível.")
         return
 
-    # Seleciona piezômetro
-    node_id = st.selectbox("Selecione um Piezômetro (Correlação):", sorted(df_corr["Node_ID"].unique()))
+    node_id = st.selectbox("Selecione um Piezômetro (Correlação):",
+                           sorted(df_corr["Node_ID"].unique()))
 
-    # Filtra correlações para o nó escolhido
     df_filtrado = df_corr[df_corr["Node_ID"] == node_id]
 
     if df_filtrado.empty:
         st.error(f"Nenhum dado de correlação encontrado para o Node {node_id}.")
         return
 
-    # Cria gráfico interativo
     fig = px.line(
         df_filtrado,
         x="Month",
@@ -123,7 +113,6 @@ def display_correlation_dashboard(df_corr):
         hovermode="x unified"
     )
 
-    # Exibe o gráfico
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("""
@@ -134,13 +123,12 @@ def display_correlation_dashboard(df_corr):
 
     🧠 Isso ajuda a avaliar o comportamento conjunto das variáveis medidas pelos sensores.
     """)
+
 def main():
     st.title("🔎 Análise de Piezômetros")
 
-    # Atualiza os dados e carrega os CSVs processados
     monthy_df, df_corr = update_and_load_data()
 
-    # Cria abas para navegação
     tab1, tab2 = st.tabs(["📊 Presença Mensal", "📈 Correlação entre Variáveis"])
 
     with tab1:
@@ -148,6 +136,6 @@ def main():
 
     with tab2:
         display_correlation_dashboard(df_corr)
+
 if __name__ == "__main__":
     main()
-
