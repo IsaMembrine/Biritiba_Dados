@@ -8,10 +8,13 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 
 # Autenticação via secrets ou env
+import streamlit as st
+
 auth = (
-    os.getenv("GATEWAY_USERNAME"),
-    os.getenv("GATEWAY_PASSWORD")
+    st.secrets["GATEWAY_USERNAME"],
+    st.secrets["GATEWAY_PASSWORD"]
 )
+
 
 base_url = 'https://loadsensing.wocs3.com'
 urls = [f'{base_url}/27920/dataserver/node/view/{nid}' for nid in [1006, 1007, 1008, 1010, 1011, 1012]]
