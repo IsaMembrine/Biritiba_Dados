@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import sys
 
-# Importa funções de update_data.py
+# Importa funções do arquivo de backend
 sys.path.append('.')
 from update_data import coletar_links, baixar_arquivos, processar_arquivos, analisar_e_salvar
 
@@ -43,35 +43,4 @@ def display_attendance_dashboard(monthy_df):
 def display_correlation_dashboard(df_corr):
     st.header("📈 Correlação Mensal entre Variáveis")
     if not df_corr.empty and 'Node_ID' in df_corr.columns:
-        node_id = st.selectbox("Selecione um Piezômetro (Correlação):", sorted(df_corr["Node_ID"].unique()))
-        df_filtrado = df_corr[df_corr["Node_ID"] == node_id].copy()
-        df_filtrado['Month_sort'] = pd.to_datetime(df_filtrado['Month'], errors='coerce')
-        df_filtrado = df_filtrado.sort_values(by='Month_sort').drop(columns=['Month_sort'])
-        fig = px.bar(
-            df_filtrado,
-            x="Month",
-            y="Correlation",
-            labels={"Month": "Mês", "Correlation": "Correlação"},
-            color_discrete_sequence=["indianred"]
-        )
-        fig.add_shape(
-            type="line",
-            x0=-0.5,
-            x1=len(df_filtrado['Month']) - 0.5,
-            y0=-0.75,
-            y1=-0.75,
-            line=dict(color="Red", width=2, dash="dash")
-        )
-        fig.update_layout(yaxis_range=[-1, 1])
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Dados de correlação não disponíveis.")
-
-def main():
-    st.title("🔎 Análise de Piezômetros")
-    monthy_df, corr_df = update_and_load_data()
-    display_attendance_dashboard(monthy_df)
-    display_correlation_dashboard(corr_df)
-
-if __name__ == "__main__":
-    main()
+        node_id = st.selectbox("Selecione um Piez
