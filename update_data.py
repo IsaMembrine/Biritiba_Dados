@@ -1,5 +1,3 @@
-
-# update_data.py
 import os
 import io
 import re
@@ -72,15 +70,9 @@ def baixar_arquivos(all_file_links):
 
 def processar_arquivos(downloaded_files):
     all_dataframes = {}
-    hoje = datetime.now()
-    limite_data = hoje.replace(day=1)
-    three_months_ago = limite_data - timedelta(days=90)
-
     for node_id, files in downloaded_files.items():
         dfs_node = []
         for fp in files:
-            if 'health' in fp.lower():
-                continue
             if fp.endswith('.csv'):
                 try:
                     df = pd.read_csv(fp, skiprows=9)
@@ -91,8 +83,6 @@ def processar_arquivos(downloaded_files):
                 try:
                     with zipfile.ZipFile(fp, 'r') as zf:
                         for fn in zf.namelist():
-                            if 'health' in fn.lower():
-                                continue
                             if fn.endswith('.csv'):
                                 with zf.open(fn) as f:
                                     df = pd.read_csv(io.TextIOWrapper(f, 'utf-8'), skiprows=9)
@@ -105,11 +95,6 @@ def processar_arquivos(downloaded_files):
     return all_dataframes
 
 def analisar_e_salvar(all_dataframes):
-    if not all_dataframes: # Add check for empty dictionary
-        print("No dataframes to analyze.")
-        # Return empty dataframes or handle as needed
-        return pd.DataFrame(), pd.DataFrame()
-
     first_node = list(all_dataframes.keys())[0]
     todos_nos = all_dataframes[first_node].copy()
     for node_id, df in all_dataframes.items():
@@ -120,20 +105,14 @@ def analisar_e_salvar(all_dataframes):
     todos_nos.dropna(subset=['Date-and-time'], inplace=True)
     todos_nos['Date'] = todos_nos['Date-and-time'].dt.date
     todos_nos['Time_Rounded'] = todos_nos['Date-and-time'].dt.round('h').dt.time
+    todos_nos['Month'] = todos_nos['Date-and-time'].dt.to_period('M')
 
     df_cleaned = todos_nos.copy()
     df_cleaned.drop_duplicates(subset=['Date', 'Time_Rounded'], inplace=True)
-
     p_cols = [c for c in df_cleaned.columns if c.startswith('p-')]
     df_selected = df_cleaned[['Date-and-time', 'Time_Rounded'] + p_cols].copy()
-
-    # 🔁 Usando Date-and-time corretamente como datetime64
-    melted = df_selected.melt(
-        id_vars=['Date-and-time', 'Time_Rounded'],
-        value_vars=p_cols,
-        var_name='Node_p_Column',
-        value_name='Value'
-    )
+    melted = df_selected.melt(id_vars=['Date-and-time', 'Time_Rounded'], value_vars=p_cols,
+                              var_name='Node_p_Column', value_name='Value')
     melted.dropna(subset=['Value'], inplace=True)
     melted['Month'] = melted['Date-and-time'].dt.to_period('M')
     melted['Node_ID'] = melted['Node_p_Column'].apply(lambda x: x.split('-')[1])
@@ -145,34 +124,24 @@ def analisar_e_salvar(all_dataframes):
     monthy_selecionado['Month'] = monthy_selecionado['Month'].astype(str)
     monthy_selecionado.to_csv("monthy_selecionado.csv", index=False)
 
-    # --- Calculate Correlation Data (Placeholder - you need to implement this) ---
-    # This part is missing in your provided update_data.py
-    # You need to calculate the monthly correlation between 'freqInHz' and 'p' columns here
-    # and create a DataFrame named df_corr with 'Month', 'Node_ID', and 'Correlation' columns.
-    # For now, returning a dummy df_corr as in streamlit_app.py for demonstration.
-    data_corr = {
-        'Month': ['2023-01', '2023-02', '2023-03', '2023-01', '2023-02', '2023-03'],
-        'Node_ID': ['1006', '1006', '1006', '1007', '1007', '1007'],
-        'Correlation': [0.8, 0.75, 0.9, -0.6, -0.7, -0.85]
-    }
-    df_corr = pd.DataFrame(data_corr)
-    df_corr['Month'] = df_corr['Month'].astype(str)
-    # --- End of Placeholder ---
+    calcular_correlacao_mensal(todos_nos)
 
-
+def calcular_correlacao_mensal(todos_nos):
+    correlacoes = []
     node_ids = {re.search(r'-(\d+)-', c).group(1) for c in todos_nos.columns if re.search(r'-(\d+)-', c)}
-    node_column_pairs = {}
     for nid in node_ids:
-        f_col = f'freqInHz-{nid}-VW-Ch1'
         p_col = f'p-{nid}-Ch1'
-        if f_col in todos_nos.columns and p_col in todos_nos.columns:
-            node_column_pairs
-
-    return monthy_selecionado, df_corr # Return both dataframes
-
-# Example usage (can be moved to a main execution block or separate script)
-# file_links = coletar_links()
-# downloaded_files = baixar_arquivos(file_links)
-# dfs = processar_arquivos(downloaded_files)
-# analisar_e_salvar(dfs)
-
+        f_col = f'freqInHz-{nid}-VW-Ch1'
+        if p_col in todos_nos.columns and f_col in todos_nos.columns:
+            df_node = todos_nos[['Month', p_col, f_col]].dropna()
+            grouped = df_node.groupby('Month')
+            for m, df_group in grouped:
+                if len(df_group) > 2:
+                    corr = df_group[p_col].corr(df_group[f_col])
+                    correlacoes.append({
+                        'Month': str(m),
+                        'Node_ID': nid,
+                        'Correlation': corr
+                    })
+    df_corr_real = pd.DataFrame(correlacoes)
+    df_corr_real.to_csv("correlacoes_mensais.csv", index=False)
